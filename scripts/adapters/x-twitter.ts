@@ -66,13 +66,14 @@ export async function extract(url: string, ctx: AdapterContext): Promise<ParseRe
 
   const sock = await ctx.ensureDaemon();
   try {
-    await ctx.sendDaemonRequest(sock, "enableNetwork");
-
     const savedCookies = loadCookies();
     if (savedCookies) {
+      await ctx.sendDaemonRequest(sock, "navigate", { url: "about:blank", timeout: ctx.timeout });
       await ctx.sendDaemonRequest(sock, "setCookies", { cookies: savedCookies });
     }
 
+    // enableNetwork before navigate: daemon persists the flag and re-enables on new sessions
+    await ctx.sendDaemonRequest(sock, "enableNetwork");
     await ctx.sendDaemonRequest(sock, "navigate", { url, timeout: ctx.timeout });
 
     const loginCheck = await ctx.sendDaemonRequest(sock, "evaluate", {

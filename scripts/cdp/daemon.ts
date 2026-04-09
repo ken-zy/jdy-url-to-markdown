@@ -15,6 +15,7 @@ export class CDPDaemon {
   private busy = false;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private networkResponses = new Map<string, { url: string; requestId: string }>();
+  private networkEnabled = false;
   private server: net.Server | null = null;
   private currentSessionId: string | null = null;
   private currentTargetId: string | null = null;
@@ -107,6 +108,13 @@ export class CDPDaemon {
     this.currentSessionId = sessionId;
 
     await this.cdp.send("Page.enable", {}, sessionId);
+
+    // Re-enable network monitoring on new session if it was previously enabled
+    if (this.networkEnabled) {
+      await this.cdp.send("Network.enable", {}, sessionId);
+      this.networkResponses.clear();
+    }
+
     await this.cdp.send("Page.navigate", { url }, sessionId);
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Navigation timeout")), timeout);
@@ -157,8 +165,12 @@ export class CDPDaemon {
   }
 
   private async enableNetwork(): Promise<{ ok: true }> {
-    await this.cdp.send("Network.enable", {}, this.currentSessionId!);
+    this.networkEnabled = true;
     this.networkResponses.clear();
+    // If a session already exists, enable immediately; otherwise navigate will enable it
+    if (this.currentSessionId) {
+      await this.cdp.send("Network.enable", {}, this.currentSessionId);
+    }
     this.cdp.on("Network.responseReceived", (params: any) => {
       this.networkResponses.set(params.requestId, {
         url: params.response.url,
