@@ -37,6 +37,20 @@ describe("qualityCheck", () => {
     expect(result.reason).toContain("login wall");
   });
 
+  test("does not false-positive on Chinese articles mentioning login", () => {
+    const markdown = [
+      "# 企业 SSO 登录指南",
+      "",
+      "本文档介绍如何在企业系统中配置单点登录功能。管理员需要先在后台配置身份提供商的相关信息和参数。",
+      "",
+      "用户在首次使用时需要请登录企业门户网站，完成初始化设置。配置完成后即可使用统一身份认证访问所有内部系统。",
+      "",
+      "如遇到问题请联系系统管理员获取帮助，常见问题包括证书过期和域名配置错误。请确保使用最新版本的浏览器。",
+    ].join("\n");
+    const result = qualityCheck(markdown);
+    expect(result.pass).toBe(true);
+  });
+
   test("fails for content with only 1 useful paragraph", () => {
     const markdown = [
       "# Title",

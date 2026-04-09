@@ -10,7 +10,7 @@ const ANTI_SCRAPING_MARKERS = [
 ];
 
 const LOGIN_WALL_MARKERS = [
-  /请登录/,
+  /请登录.{0,6}(?:查看|访问|继续|阅读)/,
   /sign in to continue/i,
   /log in to (?:view|access|continue|read|see)/i,
   /Become a .* Member to (?:read|access|view|continue)/i,
