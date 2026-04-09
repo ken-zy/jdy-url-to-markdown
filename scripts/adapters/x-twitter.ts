@@ -51,6 +51,7 @@ function extractTweetData(graphqlPayload: any): { tweets: any[]; author: any } {
       if (!author) author = user;
       tweets.push({
         id: tweetId,
+        author: user,
         text: legacy.full_text || "",
         created_at: legacy.created_at || "",
         favorite_count: legacy.favorite_count || 0,
@@ -137,8 +138,10 @@ export async function extract(url: string, ctx: AdapterContext): Promise<ParseRe
       tweets.unshift(target);
     }
 
-    const authorName = author?.name || "Unknown";
-    const authorHandle = author?.screen_name || "unknown";
+    // Prefer target tweet's author over first-found author
+    const resolvedAuthor = tweets[0].author || author;
+    const authorName = resolvedAuthor?.name || "Unknown";
+    const authorHandle = resolvedAuthor?.screen_name || "unknown";
     const lines: string[] = [];
     lines.push(`# @${authorHandle} (${authorName})`, "");
 
