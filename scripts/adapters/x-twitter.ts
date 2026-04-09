@@ -34,12 +34,19 @@ function deleteCookies(): void {
 
 function extractTweetData(graphqlPayload: any): { tweets: any[]; author: any } {
   const tweets: any[] = [];
+  const seenIds = new Set<string>();
   let author: any = null;
 
-  function walk(obj: any): void {
+  function walk(obj: any, isQuoted = false): void {
     if (!obj || typeof obj !== "object") return;
     if (obj.__typename === "Tweet" || obj.legacy?.full_text) {
       const legacy = obj.legacy || obj;
+      const tweetId = legacy.id_str || obj.rest_id || "";
+
+      // Skip quoted tweets from the main list — they're rendered inline as blockquotes
+      if (isQuoted || (tweetId && seenIds.has(tweetId))) return;
+      if (tweetId) seenIds.add(tweetId);
+
       const user = obj.core?.user_results?.result?.legacy || {};
       if (!author) author = user;
       tweets.push({
@@ -50,9 +57,18 @@ function extractTweetData(graphqlPayload: any): { tweets: any[]; author: any } {
         media: (legacy.entities?.media || []).map((m: any) => m.media_url_https || m.url),
         quoted: obj.quoted_status_result?.result,
       });
+
+      // Walk children but skip quoted_status_result (handled via quoted property)
+      for (const [key, val] of Object.entries(obj)) {
+        if (key === "quoted_status_result") continue;
+        if (typeof val === "object") walk(val, false);
+      }
+      return;
     }
-    for (const val of Object.values(obj)) {
-      if (typeof val === "object") walk(val);
+    for (const [key, val] of Object.entries(obj)) {
+      if (typeof val === "object") {
+        walk(val, key === "quoted_status_result");
+      }
     }
   }
 
