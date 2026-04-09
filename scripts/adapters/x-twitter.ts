@@ -133,7 +133,9 @@ export async function extract(url: string, ctx: AdapterContext): Promise<ParseRe
 
     // Anchor: move the target tweet (matching URL's tweetId) to position 0
     const targetIdx = tweets.findIndex((t: any) => t.id === tweetId);
-    if (targetIdx > 0) {
+    if (targetIdx === -1) {
+      console.error(`[x-twitter] Warning: target tweet ${tweetId} not found in payload, using first available`);
+    } else if (targetIdx > 0) {
       const [target] = tweets.splice(targetIdx, 1);
       tweets.unshift(target);
     }
