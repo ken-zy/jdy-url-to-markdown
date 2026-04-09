@@ -77,7 +77,7 @@ export class CDPConnection {
     });
   }
 
-  async send(method: string, params: any = {}): Promise<any> {
+  async send(method: string, params: any = {}, sessionId?: string): Promise<any> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -90,7 +90,9 @@ export class CDPConnection {
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
 
-      this.ws.send(JSON.stringify({ id, method, params }));
+      const msg: any = { id, method, params };
+      if (sessionId) msg.sessionId = sessionId;
+      this.ws.send(JSON.stringify(msg));
     });
   }
 
@@ -98,6 +100,13 @@ export class CDPConnection {
     const list = this.eventHandlers.get(event) || [];
     list.push(handler);
     this.eventHandlers.set(event, list);
+  }
+
+  off(event: string, handler: (params: any) => void): void {
+    const list = this.eventHandlers.get(event);
+    if (!list) return;
+    const idx = list.indexOf(handler);
+    if (idx !== -1) list.splice(idx, 1);
   }
 
   close(): void {

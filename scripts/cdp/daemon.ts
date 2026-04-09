@@ -16,6 +16,8 @@ export class CDPDaemon {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private networkResponses = new Map<string, { url: string; requestId: string }>();
   private server: net.Server | null = null;
+  private currentSessionId: string | null = null;
+  private currentTargetId: string | null = null;
 
   async start(): Promise<void> {
     const wsUrl = getWsUrl();
@@ -92,21 +94,34 @@ export class CDPDaemon {
   }
 
   private async navigate(url: string, timeout = 30000): Promise<{ ok: true }> {
+    // Close previous tab if any
+    if (this.currentTargetId) {
+      try { await this.cdp.send("Target.closeTarget", { targetId: this.currentTargetId }); } catch {}
+      this.currentTargetId = null;
+      this.currentSessionId = null;
+    }
+
     const { targetId } = await this.cdp.send("Target.createTarget", { url: "about:blank" });
-    await this.cdp.send("Target.attachToTarget", { targetId, flatten: true });
-    await this.cdp.send("Page.enable", {});
-    await this.cdp.send("Page.navigate", { url });
+    const { sessionId } = await this.cdp.send("Target.attachToTarget", { targetId, flatten: true });
+    this.currentTargetId = targetId;
+    this.currentSessionId = sessionId;
+
+    await this.cdp.send("Page.enable", {}, sessionId);
+    await this.cdp.send("Page.navigate", { url }, sessionId);
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Navigation timeout")), timeout);
-      this.cdp.on("Page.loadEventFired", () => {
+      const handler = () => {
         clearTimeout(timer);
+        this.cdp.off("Page.loadEventFired", handler);
         setTimeout(resolve, 1500);
-      });
+      };
+      this.cdp.on("Page.loadEventFired", handler);
     });
     return { ok: true };
   }
 
   private async getHTML(params?: { waitForSelector?: string }): Promise<{ html: string }> {
+    const sid = this.currentSessionId!;
     if (params?.waitForSelector) {
       const parts = params.waitForSelector.split(":");
       const timeoutStr = parts.pop();
@@ -123,12 +138,12 @@ export class CDPDaemon {
           setTimeout(() => { observer.disconnect(); reject(new Error('timeout')); }, ${timeout});
         })`,
         awaitPromise: true,
-      });
+      }, sid);
     }
     const { result } = await this.cdp.send("Runtime.evaluate", {
       expression: "document.documentElement.outerHTML",
       returnByValue: true,
-    });
+    }, sid);
     return { html: result.value };
   }
 
@@ -137,12 +152,12 @@ export class CDPDaemon {
       expression,
       returnByValue: true,
       awaitPromise: true,
-    });
+    }, this.currentSessionId!);
     return result.value;
   }
 
   private async enableNetwork(): Promise<{ ok: true }> {
-    await this.cdp.send("Network.enable", {});
+    await this.cdp.send("Network.enable", {}, this.currentSessionId!);
     this.networkResponses.clear();
     this.cdp.on("Network.responseReceived", (params: any) => {
       this.networkResponses.set(params.requestId, {
@@ -160,24 +175,27 @@ export class CDPDaemon {
   }
 
   private async getResponseBody(requestId: string): Promise<{ body: string }> {
-    const { body, base64Encoded } = await this.cdp.send("Network.getResponseBody", { requestId });
+    const { body, base64Encoded } = await this.cdp.send("Network.getResponseBody", { requestId }, this.currentSessionId!);
     return { body: base64Encoded ? Buffer.from(body, "base64").toString() : body };
   }
 
   private async setCookies(cookies: any[]): Promise<{ ok: true }> {
     for (const cookie of cookies) {
-      await this.cdp.send("Network.setCookie", cookie);
+      await this.cdp.send("Network.setCookie", cookie, this.currentSessionId!);
     }
     return { ok: true };
   }
 
   private async getCookies(domain: string): Promise<{ cookies: any[] }> {
-    const { cookies } = await this.cdp.send("Network.getCookies", { urls: [`https://${domain}`] });
+    const { cookies } = await this.cdp.send("Network.getCookies", { urls: [`https://${domain}`] }, this.currentSessionId!);
     return { cookies };
   }
 
   shutdown(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.currentTargetId) {
+      try { this.cdp.send("Target.closeTarget", { targetId: this.currentTargetId }); } catch {}
+    }
     if (this.server) {
       this.server.close();
       try { unlinkSync(SOCK_PATH); } catch {}

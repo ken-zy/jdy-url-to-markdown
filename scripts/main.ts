@@ -86,7 +86,7 @@ async function cdpFetch(url: string, rule: SiteRule, timeout: number): Promise<s
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const { url, cdp: forceCdp, timeout, output } = args;
+  const { url, cdp: forceCdp, wait, timeout, output } = args;
 
   try {
     new URL(url);
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
     const result = await fetchAndParse(url, {
       rule,
       timeout,
-      forceCdp,
+      forceCdp: forceCdp || wait,
       cdpFetch,
     });
 
