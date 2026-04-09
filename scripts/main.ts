@@ -8,7 +8,7 @@ function printUsage(): void {
   console.error(`Usage: bun run scripts/main.ts <url> [options]
 Options:
   --cdp           Force CDP (skip Level 1)
-  --wait          Wait mode for login-required pages
+  --wait          Force CDP (alias for --cdp, reserved for future login-wait)
   --timeout <ms>  Page load timeout (default: 30000)
   -o <path>       Output file path`);
 }

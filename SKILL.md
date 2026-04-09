@@ -49,7 +49,7 @@ If EXTEND.md not found, use defaults. No blocking setup flow required.
     # Save to specific path
     ${CMD} <url> -o /path/to/output.md
 
-    # Wait mode for login-required pages
+    # Force CDP (alias, reserved for future login-wait mode)
     ${CMD} <url> --wait
 
     # Custom timeout
