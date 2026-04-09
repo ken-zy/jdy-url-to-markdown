@@ -12,9 +12,9 @@ const ANTI_SCRAPING_MARKERS = [
 const LOGIN_WALL_MARKERS = [
   /请登录/,
   /sign in to continue/i,
-  /log in to/i,
-  /Become a .* Member/i,
-  /Subscribe to/i,
+  /log in to (?:view|access|continue|read|see)/i,
+  /Become a .* Member to (?:read|access|view|continue)/i,
+  /Subscribe to (?:read|access|view|continue|unlock)/i,
 ];
 
 function stripMarkdownMarkers(text: string): string {

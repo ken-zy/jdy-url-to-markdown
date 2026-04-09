@@ -86,4 +86,25 @@ describe("qualityCheck", () => {
     expect(result.pass).toBe(false);
     expect(result.reason).toContain("anti-scraping");
   });
+
+  test("does not false-positive on articles mentioning 'log in' or 'subscribe'", () => {
+    const markdown = [
+      "# How to Log In to AWS Console",
+      "",
+      "This guide explains how to log in to your AWS account using the management console for the first time.",
+      "",
+      "First, navigate to the AWS sign-in page and enter your root account email address and password to proceed.",
+      "",
+      "Subscribe to our newsletter for weekly updates on cloud computing tips and best practices for developers.",
+    ].join("\n");
+    const result = qualityCheck(markdown);
+    expect(result.pass).toBe(true);
+  });
+
+  test("detects actual login wall with action verbs", () => {
+    const markdown = "# Article\n\nLog in to view this article and unlock full access to all premium content on our platform today.\n\nSubscribe to read the complete story and get unlimited access to all articles published on this website.";
+    const result = qualityCheck(markdown);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("login wall");
+  });
 });
