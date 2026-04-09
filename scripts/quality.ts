@@ -50,27 +50,23 @@ function isUsefulParagraph(line: string): boolean {
 }
 
 export function qualityCheck(markdown: string): QualityResult {
-  // Check anti-scraping and login wall markers first, before length check
-  // so that error pages are correctly identified even when short
+  const plainText = stripMarkdownMarkers(markdown);
+  const charCount = plainText.length;
+
+  if (charCount < 120) {
+    return { pass: false, reason: `content too short: ${charCount} chars (min 120)`, stats: { charCount, usefulParagraphs: 0 } };
+  }
+
   for (const marker of ANTI_SCRAPING_MARKERS) {
     if (marker.test(markdown)) {
-      return { pass: false, reason: `anti-scraping marker detected: ${marker.source}`, stats: { charCount: 0, usefulParagraphs: 0 } };
+      return { pass: false, reason: `anti-scraping marker detected: ${marker.source}`, stats: { charCount, usefulParagraphs: 0 } };
     }
   }
 
   for (const marker of LOGIN_WALL_MARKERS) {
     if (marker.test(markdown)) {
-      return { pass: false, reason: `login wall marker detected: ${marker.source}`, stats: { charCount: 0, usefulParagraphs: 0 } };
+      return { pass: false, reason: `login wall marker detected: ${marker.source}`, stats: { charCount, usefulParagraphs: 0 } };
     }
-  }
-
-  const plainText = stripMarkdownMarkers(markdown);
-  // Use raw markdown length for the size check; weight Chinese chars ×3 for semantic density
-  const chineseCount = countChineseChars(markdown);
-  const charCount = markdown.length - chineseCount + chineseCount * 3;
-
-  if (charCount < 120) {
-    return { pass: false, reason: `content too short: ${charCount} chars (min 120)`, stats: { charCount, usefulParagraphs: 0 } };
   }
 
   const lines = markdown.split(/\n\n+/);
