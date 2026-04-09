@@ -50,6 +50,7 @@ function extractTweetData(graphqlPayload: any): { tweets: any[]; author: any } {
       const user = obj.core?.user_results?.result?.legacy || {};
       if (!author) author = user;
       tweets.push({
+        id: tweetId,
         text: legacy.full_text || "",
         created_at: legacy.created_at || "",
         favorite_count: legacy.favorite_count || 0,
@@ -127,6 +128,13 @@ export async function extract(url: string, ctx: AdapterContext): Promise<ParseRe
 
     if (tweets.length === 0) {
       throw new Error("No tweet data found in GraphQL response.");
+    }
+
+    // Anchor: move the target tweet (matching URL's tweetId) to position 0
+    const targetIdx = tweets.findIndex((t: any) => t.id === tweetId);
+    if (targetIdx > 0) {
+      const [target] = tweets.splice(targetIdx, 1);
+      tweets.unshift(target);
     }
 
     const authorName = author?.name || "Unknown";
