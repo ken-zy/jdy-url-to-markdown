@@ -99,6 +99,9 @@ export async function extract(url: string, ctx: AdapterContext): Promise<ParseRe
     });
 
     if (loginCheck && !savedCookies) {
+      if (!process.stdin.isTTY) {
+        throw new Error("X login required but running in non-interactive mode. Run manually with a TTY to authenticate.");
+      }
       console.error("[x-twitter] Login required. Please log in to X in the Chrome window, then press Enter.");
       await new Promise<void>((resolve) => { process.stdin.once("data", () => resolve()); });
       await ctx.sendDaemonRequest(sock, "navigate", { url, timeout: ctx.timeout });
