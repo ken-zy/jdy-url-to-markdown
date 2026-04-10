@@ -59,7 +59,7 @@ async function extractArticle(
       timeout: ctx.timeout,
     });
 
-    const html = await ctx.sendDaemonRequest(sock, "getHTML", {});
+    const { html } = await ctx.sendDaemonRequest(sock, "getHTML", {});
     const text = html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -92,20 +92,31 @@ async function extractTopic(
 ): Promise<ParseResult> {
   const sock = await ctx.ensureDaemon();
   try {
-    // Navigate to wx.zsxq.com to ensure same-origin cookie access
+    // Navigate to group page (not topic page, which may redirect if SPA routing fails)
     await ctx.sendDaemonRequest(sock, "navigate", {
-      url: `https://wx.zsxq.com/group/${groupId}/topic/${topicId}`,
+      url: `https://wx.zsxq.com/group/${groupId}`,
       timeout: ctx.timeout,
     });
 
+    // Check login status
+    const { value: currentUrl } = await ctx.sendDaemonRequest(sock, "evaluate", {
+      expression: "window.location.href",
+    });
+    if (currentUrl.includes("join_group") || currentUrl.includes("login")) {
+      throw new Error("知识星球未登录，请在 Chrome 中登录 wx.zsxq.com 后重试");
+    }
+
     // Fetch topic data via API from page context
-    const raw = await ctx.sendDaemonRequest(sock, "evaluate", {
+    // Use resp.text() + manual extraction to avoid JSON.parse BigInt precision loss
+    const { value: raw } = await ctx.sendDaemonRequest(sock, "evaluate", {
       expression: `(async () => {
-        const resp = await fetch('https://api.zsxq.com/v2/groups/${groupId}/topics/${topicId}', {
+        const resp = await fetch('https://api.zsxq.com/v2/topics/${topicId}', {
           credentials: 'include',
           headers: { 'Accept': 'application/json' }
         });
-        const data = await resp.json();
+        const text = await resp.text();
+        if (text.startsWith('<!')) throw new Error('API returned HTML — topic not found or auth failed');
+        const data = JSON.parse(text);
         if (!data.succeeded) throw new Error('API error: ' + (data.code || 'unknown'));
         const t = data.resp_data.topic;
         return JSON.stringify({
@@ -170,7 +181,7 @@ async function extractArticleFull(slug: string, ctx: AdapterContext): Promise<Pa
     });
 
     // Extract title and meta from page
-    const meta = await ctx.sendDaemonRequest(sock, "evaluate", {
+    const { value: meta } = await ctx.sendDaemonRequest(sock, "evaluate", {
       expression: `JSON.stringify({
         title: document.querySelector('title')?.textContent || '',
         author: document.querySelector('.author, .name')?.textContent?.trim() || '',
@@ -213,7 +224,7 @@ export async function extract(url: string, ctx: AdapterContext): Promise<ParseRe
       const sock = await ctx.ensureDaemon();
       try {
         await ctx.sendDaemonRequest(sock, "navigate", { url, timeout: ctx.timeout });
-        const resolvedUrl = await ctx.sendDaemonRequest(sock, "evaluate", {
+        const { value: resolvedUrl } = await ctx.sendDaemonRequest(sock, "evaluate", {
           expression: "window.location.href",
         });
         sock.destroy();
