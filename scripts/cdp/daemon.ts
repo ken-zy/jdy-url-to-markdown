@@ -86,7 +86,9 @@ export class CDPDaemon {
         case "getCookies": result = await this.getCookies(req.params.domain); break;
         default: result = { error: `Unknown method: ${req.method}` };
       }
-      socket.write(JSON.stringify(result) + "\n");
+      // Ensure result is always a non-null object for JSON serialization
+      const response = (result !== null && result !== undefined && typeof result === "object") ? result : { value: result ?? null };
+      socket.write(JSON.stringify(response) + "\n");
     } catch (e) {
       socket.write(JSON.stringify({ error: (e as Error).message }) + "\n");
     } finally {
@@ -161,7 +163,7 @@ export class CDPDaemon {
       returnByValue: true,
       awaitPromise: true,
     }, this.currentSessionId!);
-    return result.value;
+    return result.value ?? null;
   }
 
   private async enableNetwork(): Promise<{ ok: true }> {

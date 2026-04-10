@@ -24,5 +24,8 @@ bun.lockb
 # Logs
 *.log
 
+# Generated output
+40_Reference/
+
 # Claude Code
 claude-responses/

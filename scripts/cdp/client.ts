@@ -1,37 +1,45 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, mkdirSync } from "fs";
+import { spawnSync, spawn } from "child_process";
 import { homedir } from "os";
 import { resolve } from "path";
 
 const TIMEOUT = 15000;
+const CHROME_PROFILE_DIR = resolve(homedir(), "chrome_profiles", "profile_1");
+const CHROME_PORT_FILE = resolve(CHROME_PROFILE_DIR, "DevToolsActivePort");
+const CHROME_APP = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
+function launchChrome(): void {
+  mkdirSync(CHROME_PROFILE_DIR, { recursive: true });
+  console.error("[cdp] Launching Chrome with profile_1...");
+  const proc = spawn(CHROME_APP, [
+    `--user-data-dir=${CHROME_PROFILE_DIR}`,
+    "--remote-debugging-port=0",
+    "--no-first-run",
+    "--no-default-browser-check",
+    `--disk-cache-dir=${CHROME_PROFILE_DIR}/cache`,
+  ], { detached: true, stdio: "ignore" });
+  proc.unref();
+}
+
+function waitForPortFile(maxWaitMs = 15000): string {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    if (existsSync(CHROME_PORT_FILE)) {
+      const content = readFileSync(CHROME_PORT_FILE, "utf-8").trim();
+      const lines = content.split("\n");
+      if (lines.length >= 2 && lines[0] && lines[1]) return CHROME_PORT_FILE;
+    }
+    spawnSync("sleep", ["0.5"]);
+  }
+  throw new Error(`Chrome failed to start within ${maxWaitMs / 1000}s`);
+}
 
 export function getWsUrl(): string {
-  const home = homedir();
-  const macBrowsers = [
-    "Google/Chrome", "Google/Chrome Beta", "Google/Chrome for Testing",
-    "Chromium", "BraveSoftware/Brave-Browser", "Microsoft Edge",
-  ];
-  const linuxBrowsers = [
-    "google-chrome", "google-chrome-beta", "chromium",
-    "BraveSoftware/Brave-Browser", "microsoft-edge",
-  ];
+  let portFile = existsSync(CHROME_PORT_FILE) ? CHROME_PORT_FILE : null;
 
-  const candidates: (string | undefined)[] = [
-    process.env.CDP_PORT_FILE,
-    ...macBrowsers.flatMap(b => [
-      resolve(home, "Library/Application Support", b, "DevToolsActivePort"),
-    ]),
-    ...linuxBrowsers.flatMap(b => [
-      resolve(home, ".config", b, "DevToolsActivePort"),
-    ]),
-  ];
-
-  const portFile = candidates.filter(Boolean).find(p => existsSync(p!));
   if (!portFile) {
-    throw new Error(
-      "No DevToolsActivePort found. Start Chrome with remote debugging:\n" +
-      "  chrome --remote-debugging-port=0\n" +
-      "Or enable at chrome://flags/#allow-remote-debugging"
-    );
+    launchChrome();
+    portFile = waitForPortFile();
   }
 
   const lines = readFileSync(portFile, "utf-8").trim().split("\n");
