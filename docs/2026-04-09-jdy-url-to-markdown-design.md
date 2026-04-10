@@ -1,6 +1,8 @@
 # jdy-url-to-markdown Design Spec
 
-> Date: 2026-04-09 | Status: Draft | Replaces: baoyu-url-to-markdown
+> Date: 2026-04-09 | Status: Draft (rev.1) | Replaces: baoyu-url-to-markdown
+>
+> **Rev.1 changes (2026-04-09):** Codex review 修订 — 路由改为域名后缀匹配 + 别名、daemon 加请求互斥锁、X cookie 持久化加安全约束、slug 生成加字符白名单、YAML 字段加引号策略、运行时改为要求预装 Bun
 
 ## 1. Overview
 
@@ -16,7 +18,7 @@ A Claude Code skill (independent plugin repo) that fetches any URL and converts 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Project location | Independent repo (Claude plugin) | Reusable across projects |
-| Runtime | Bun (via `npx -y bun`) | Native TS, fast, precedent in ecosystem |
+| Runtime | Bun (requires preinstall) | Native TS, fast, precedent in ecosystem; skill validates `bun` on PATH at startup |
 | Jina Reader | Excluded | Privacy, adds external dependency, doesn't help with top use case (WeChat) |
 | CDP implementation | Fork chrome-cdp-skill daemon | Proven, zero-dep, persistent connection |
 | Content extraction | Readability + Turndown | Local-only, no remote API (Defuddle removed) |
@@ -50,6 +52,13 @@ Reads `site-rules.json` to determine:
 - Which adapter to use (youtube, x-twitter, or generic)
 - Which post-processing cleaners to apply
 
+**Host matching:** Each key in `site-rules.json` is a domain pattern. Matching order:
+1. Exact match: `mp.weixin.qq.com`
+2. Suffix match: `*.zhihu.com` matches `www.zhihu.com`, `zhuanlan.zhihu.com`, etc.
+3. Short-link aliases listed in `"aliases"` array (e.g. `youtu.be` → youtube adapter)
+
+Router normalizes the input URL host before matching: strip `www.` prefix, lowercase, then check exact → suffix → alias in order.
+
 ```json
 {
   "mp.weixin.qq.com": {
@@ -57,26 +66,22 @@ Reads `site-rules.json` to determine:
     "cdpActions": ["waitForSelector:#js_content,.rich_media_content:4500", "removeOverlays:.js_wechat_qrcode,.wx_tips,.rich_media_global_msg", "autoScroll"],
     "cleaners": ["wechat"]
   },
-  "www.zhihu.com": {
+  "*.zhihu.com": {
     "startLevel": 2,
     "cleaners": ["zhihu"]
   },
-  "www.xiaohongshu.com": {
+  "*.xiaohongshu.com": {
     "startLevel": 2,
     "cdpActions": ["expandContent"],
     "cleaners": ["xiaohongshu"]
   },
-  "youtube.com": {
-    "adapter": "youtube"
-  },
-  "www.youtube.com": {
-    "adapter": "youtube"
+  "*.youtube.com": {
+    "adapter": "youtube",
+    "aliases": ["youtu.be"]
   },
   "x.com": {
-    "adapter": "x-twitter"
-  },
-  "twitter.com": {
-    "adapter": "x-twitter"
+    "adapter": "x-twitter",
+    "aliases": ["twitter.com"]
   }
 }
 ```
@@ -130,6 +135,7 @@ Forked from chrome-cdp-skill's architecture:
 
 **daemon.ts:**
 - **Global single-daemon model** (not per-tab like chrome-cdp-skill) — simpler for our use case since we process one URL at a time
+- **Request mutex:** daemon holds at most one active request; concurrent callers receive NDJSON `{"error":"busy"}` and should retry with backoff. This prevents network journal cross-contamination between requests (especially X adapter's `Network.responseReceived` events)
 - Creates a new tab for each request via `Target.createTarget`, closes it after extraction
 - Spawns as detached background process on first CDP request
 - Listens on Unix socket (`~/.cache/jdy-url-to-markdown/daemon.sock`) for subsequent requests
@@ -244,9 +250,11 @@ Note: The old `timedtext` API endpoint is deprecated and returns empty/403 for m
   6. For quoted tweets: extract from nested `quoted_status_result` in payload
 - Cookie persistence for login state:
   - On first use: detect login wall → prompt user to log in in Chrome → wait → verify `auth_token` + `ct0` cookies present
-  - Save cookies to `~/.cache/jdy-url-to-markdown/x-session-cookies.json`
+  - **First-time save:** print explicit notice to stderr ("Saving X session cookies to ~/.cache/...") so user is aware credentials are being persisted
+  - Save cookies to `~/.cache/jdy-url-to-markdown/x-session-cookies.json` with `chmod 0600` (owner-only read/write)
   - On subsequent use: restore cookies from file → inject via `Network.setCookie` → proceed
-  - If restored cookies expired: re-prompt login flow
+  - If restored cookies expired (HTTP 401/403 or login wall re-detected): delete stale file, re-prompt login flow
+  - **Cookie file contains long-lived session tokens** — treat as sensitive. Parent directory `~/.cache/jdy-url-to-markdown/` should also be `0700`
 - Build markdown: author info, tweet text, image URLs, thread structure, engagement metrics
 - CDP daemon requirements: must expose `Network.enable`, `Network.responseReceived` event listener, and `Network.getResponseBody` in addition to basic navigate/getHTML
 
@@ -286,6 +294,7 @@ xiaohongshu:
 
 - `YYYYMMDD`: capture date
 - `<title-slug>`: from extracted title, kebab-case, max 50 chars, Chinese preserved
+- **Slug sanitization:** strip characters outside `[a-zA-Z0-9\u4e00-\u9fff-]` (alphanumeric, Chinese, hyphens), collapse consecutive hyphens, trim leading/trailing hyphens. If slug is empty after sanitization, use `untitled`. Emoji and special chars (`/ : ? * | " < >`) are stripped, not replaced.
 - Conflict: append `-HHmmss` suffix
 
 **YAML front matter format:**
@@ -302,6 +311,8 @@ captured_at: "2026-04-09T12:00:00Z"
 fetch_level: 1
 ---
 ```
+
+**YAML safety:** All string values are double-quoted. Internal double quotes are escaped as `\"`. Newlines in description/title are replaced with a single space. Values containing `---` are safe inside double quotes (no special YAML meaning).
 
 `fetch_level` records which level actually succeeded (1 or 2), useful for debugging and tuning site-rules.
 
