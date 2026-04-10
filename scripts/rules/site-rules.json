@@ -20,5 +20,9 @@
   "x.com": {
     "adapter": "x-twitter",
     "aliases": ["twitter.com"]
+  },
+  "wx.zsxq.com": {
+    "adapter": "zsxq",
+    "aliases": ["t.zsxq.com", "articles.zsxq.com"]
   }
 }
