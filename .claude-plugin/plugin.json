@@ -4,7 +4,7 @@
   "description": "Fetch URLs and convert to clean Markdown with YAML front matter",
   "skills": [
     {
-      "name": "baoyu-url-to-markdown",
+      "name": "jdy-url-to-markdown",
       "path": "../SKILL.md"
     }
   ]

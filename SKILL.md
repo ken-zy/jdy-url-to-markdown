@@ -1,5 +1,5 @@
 ---
-name: baoyu-url-to-markdown
+name: jdy-url-to-markdown
 description: Fetch any URL and convert to markdown using Chrome CDP. Supports two-level fetch (local -> CDP), site-specific cleanup (WeChat, Zhihu, Xiaohongshu), YouTube transcripts, and X/Twitter threads. Use when user wants to save a webpage as markdown.
 version: 0.1.0
 metadata:
