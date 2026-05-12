@@ -1,16 +1,17 @@
-import { readFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
 import { spawnSync, spawn } from "child_process";
 import { homedir } from "os";
 import { resolve } from "path";
+import net from "net";
 
 const TIMEOUT = 15000;
-const CHROME_PROFILE_DIR = resolve(homedir(), "chrome_profiles", "profile_1");
+const CHROME_PROFILE_DIR = resolve(homedir(), "chrome_profiles", "profile_1001");
 const CHROME_PORT_FILE = resolve(CHROME_PROFILE_DIR, "DevToolsActivePort");
 const CHROME_APP = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 function launchChrome(): void {
   mkdirSync(CHROME_PROFILE_DIR, { recursive: true });
-  console.error("[cdp] Launching Chrome with profile_1...");
+  console.error("[cdp] Launching Chrome with profile_1001...");
   const proc = spawn(CHROME_APP, [
     `--user-data-dir=${CHROME_PROFILE_DIR}`,
     "--remote-debugging-port=0",
@@ -34,8 +35,29 @@ function waitForPortFile(maxWaitMs = 15000): string {
   throw new Error(`Chrome failed to start within ${maxWaitMs / 1000}s`);
 }
 
+function isPortAlive(port: number, host = "127.0.0.1", timeoutMs = 2000): boolean {
+  try {
+    const result = spawnSync("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}",
+      `http://${host}:${port}/json/version`], { timeout: timeoutMs });
+    return result.stdout?.toString().trim() === "200";
+  } catch {
+    return false;
+  }
+}
+
 export function getWsUrl(): string {
   let portFile = existsSync(CHROME_PORT_FILE) ? CHROME_PORT_FILE : null;
+
+  // 活性检查：文件存在但端口已死 → 删除过期文件
+  if (portFile) {
+    const lines = readFileSync(portFile, "utf-8").trim().split("\n");
+    const port = parseInt(lines[0], 10);
+    if (!port || !isPortAlive(port)) {
+      console.error(`[cdp] Stale DevToolsActivePort (port ${lines[0]}), removing`);
+      unlinkSync(portFile);
+      portFile = null;
+    }
+  }
 
   if (!portFile) {
     launchChrome();
